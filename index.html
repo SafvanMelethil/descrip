@@ -2,10 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>70x30 Sticker Generator</title>
+  <title>70x30 Sticker Generator (Zone + Bin)</title>
 
-  <!-- JsBarcode & jsPDF from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <style>
@@ -29,7 +27,7 @@
     }
     textarea {
       width: 100%;
-      height: 150px;
+      height: 170px;
       font-family: Consolas, monospace;
       font-size: 13px;
       padding: 8px;
@@ -55,7 +53,7 @@
       gap: 12px;
     }
     .sticker {
-      width: 280px;
+      width: 280px;  /* visual preview only */
       height: 120px;
       border: 1px solid #ccc;
       border-radius: 4px;
@@ -72,20 +70,25 @@
       font-size: 16px;
       margin-bottom: 4px;
     }
-    .sticker-code {
-      font-size: 12px;
-      margin-bottom: 4px;
+    .sticker-barcode {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 3px;
     }
-    canvas.barcodeCanvas {
-      margin-top: 2px;
+    .sticker-zonebin {
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
-  <h1>70mm × 30mm Sticker Generator</h1>
+  <h1>70mm × 30mm Sticker Generator (Zone + Bin)</h1>
   <div class="container">
-    <p><strong>Input format:</strong> <code>MATERIALIDDescriptionBARCODE</code><br>
-       Example: <code>205722Javino Moist. 100Gm Cream06285128002707</code></p>
+    <p>
+      <strong>Input format:</strong><br>
+      <code>DescriptionInternationalNumberZoneBin</code><br>
+      Example:<br>
+      <code>Jasper F801B (Xl) Multi Panel Trimming B4715065077213B02R05-030</code>
+    </p>
 
     <textarea id="rawInput" placeholder="Paste your lines here..."></textarea>
 
@@ -99,37 +102,35 @@
   </div>
 
 <script>
-  // NEW PARSER: always take the last digits as barcode, ignore dots in description
+  // Parse line into {description, intlCode, zone, bin}
   function parseLine(line) {
     line = line.trim();
     if (!line) return null;
 
-    // first 6 digits = material number
-    const materialId = line.slice(0, 6).replace(/\D/g, '');
-    if (!materialId) return null;
+    // Expect last part like B02R05-030  (zone + bin)
+    const zoneBinMatch = line.match(/([A-Za-z]\d{2})(R\d{2}-\d{3})$/);
+    if (!zoneBinMatch) return null;
 
-    let rest = line.slice(6).trim();
-    if (!rest) return null;
+    const zone = zoneBinMatch[1];
+    const bin = zoneBinMatch[2];
 
-    // Everything until the last block of digits is description,
-    // last block of digits is barcode (even if there are dots earlier).
-    const match = rest.match(/(.*?)(\d+)\s*$/);
+    // Everything before zone is description + international digits
+    const beforeZone = line.slice(0, zoneBinMatch.index).trim();
+
+    // Take last block of digits in "beforeZone" as international number
+    const codeMatch = beforeZone.match(/(.*?)(\d+)\s*$/);
     let description = '';
-    let barcodeNumber = '';
+    let intlCode = '';
 
-    if (match) {
-      description = match[1].trim();
-      barcodeNumber = match[2].trim();
+    if (codeMatch) {
+      description = codeMatch[1].trim();
+      intlCode = codeMatch[2].trim();
     } else {
-      description = rest;
-      barcodeNumber = '';
+      description = beforeZone;
+      intlCode = '';
     }
 
-    return {
-      materialId,
-      description,
-      barcodeNumber
-    };
+    return { description, intlCode, zone, bin };
   }
 
   let parsedItems = [];
@@ -144,7 +145,7 @@
     previewArea.innerHTML = '';
     msg.textContent = '';
 
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       const item = parseLine(line);
       if (!item) return;
       parsedItems.push(item);
@@ -157,28 +158,18 @@
       descEl.textContent = item.description;
 
       const codeEl = document.createElement('div');
-      codeEl.className = 'sticker-code';
-      codeEl.textContent = item.barcodeNumber;
+      codeEl.className = 'sticker-barcode';
+      codeEl.textContent = item.intlCode;
 
-      const canvas = document.createElement('canvas');
-      canvas.className = 'barcodeCanvas';
-      canvas.id = 'barcodeCanvas_' + index;
+      const zoneBinEl = document.createElement('div');
+      zoneBinEl.className = 'sticker-zonebin';
+      zoneBinEl.textContent = item.zone + " " + item.bin;
 
       sticker.appendChild(descEl);
       sticker.appendChild(codeEl);
-      sticker.appendChild(canvas);
-      previewArea.appendChild(sticker);
+      sticker.appendChild(zoneBinEl);
 
-      // Small barcode – encodes MATERIAL NUMBER
-      if (item.materialId && item.materialId !== '0') {
-        JsBarcode(canvas, item.materialId, {
-          format: "CODE128",
-          width: 1,
-          height: 30,
-          displayValue: false,
-          margin: 0
-        });
-      }
+      previewArea.appendChild(sticker);
     });
 
     if (!parsedItems.length) {
@@ -198,37 +189,34 @@
     msg.textContent = "Building PDF...";
 
     const { jsPDF } = window.jspdf;
-    // Page size: 70mm x 30mm (landscape)
+    // 70mm x 30mm per sticker, landscape
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
-      format: [30, 70] // [height, width]
+      format: [30, 70]
     });
 
-    for (let i = 0; i < parsedItems.length; i++) {
-      const item = parsedItems[i];
-      if (i > 0) doc.addPage();
+    parsedItems.forEach((item, idx) => {
+      if (idx > 0) doc.addPage();
 
-      // Description
+      // Description (top, bold, big)
       doc.setFont("Helvetica", "bold");
-      doc.setFontSize(13);
+      doc.setFontSize(10);
       const descLines = doc.splitTextToSize(item.description, 60);
       doc.text(descLines, 35, 8, { align: "center" });
 
-      // Barcode number (below description)
-      doc.setFont("Helvetica", "normal");
+      // International number (bit bold)
+      doc.setFont("Helvetica", "bold");
       doc.setFontSize(8);
-      doc.text(item.barcodeNumber || "", 35, 17, { align: "center" });
+      doc.text(item.intlCode || "", 35, 16, { align: "center" });
 
-      // Barcode (material number)
-      const canvas = document.getElementById('barcodeCanvas_' + i);
-      if (canvas && item.materialId && item.materialId !== '0') {
-        const imgData = canvas.toDataURL("image/png");
-        doc.addImage(imgData, "PNG", 15, 19, 40, 8);
-      }
-    }
+      // Zone + Bin (small)
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(7);
+      doc.text(item.zone + " " + item.bin, 35, 23, { align: "center" });
+    });
 
-    doc.save("stickers_70x30mm.pdf");
+    doc.save("stickers_zone_70x30mm.pdf");
     msg.textContent = "PDF downloaded.";
   }
 
