@@ -201,19 +201,19 @@
 
       // Description (top, bold, big)
       doc.setFont("Helvetica", "bold");
-      doc.setFontSize(10);
+      doc.setFontSize(15);
       const descLines = doc.splitTextToSize(item.description, 60);
-      doc.text(descLines, 35, 8, { align: "center" });
+      doc.text(descLines, 35,6, { align: "center" });
 
       // International number (bit bold)
       doc.setFont("Helvetica", "bold");
-      doc.setFontSize(8);
-      doc.text(item.intlCode || "", 35, 16, { align: "center" });
+      doc.setFontSize(9);
+      doc.text(item.intlCode || "", 35, 22, { align: "center" });
 
       // Zone + Bin (small)
       doc.setFont("Helvetica", "normal");
-      doc.setFontSize(7);
-      doc.text(item.zone + " " + item.bin, 35, 23, { align: "center" });
+      doc.setFontSize(10);
+      doc.text(item.zone + " " + item.bin, 35, 28, { align: "center" });
     });
 
     doc.save("stickers_zone_70x30mm.pdf");
